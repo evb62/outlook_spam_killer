@@ -97,7 +97,7 @@ Open your crontab:
 crontab -e
 ```
 If prompted, select **nano** as your editor.
-Add this line to run the script every 5 minutes:
+Add this line to run the script every 15 minutes:
 ```
 # Outlook Spam Killer - runs every 15 minutes
 */15 * * * * /usr/bin/python3 /home/pi/outlook_spam_killer_graph.py
