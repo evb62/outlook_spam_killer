@@ -16,6 +16,9 @@ from pathlib import Path
 # --- CONFIGURATION ---
 EMAIL = "email@domain.com"  # CHANGE THIS TO YOUR EMAIL
 
+# Extract username from email for spoof detection
+EMAIL_USERNAME = EMAIL.split('@')[0]  # Automatically gets the username/local part.
+
 CLIENT_ID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" # SEARCH THIS ONLINE
 
 SCOPES = [
@@ -99,41 +102,33 @@ SPAM_KEYWORDS = [
     "click here", "act now", "limited time",
     "free trial", "money back",
     "pounds in", "lbs in", "lose weight", "fat loss",
+    "blood sugar", "diabetes", "glucose",
 ]
 
 # ============================================================
 # SELECTIVE DELETION CONFIGURATION
 # ============================================================
-# Reasons that trigger PERMANENT DELETE (bypass Trash)
-# Remove any reason from this list to move to Trash instead
 PERMANENT_DELETE_REASONS = [
-    "GIBBERISH_DOMAIN",      # Domain is random gibberish
-    "GIBBERISH_LOCAL",       # Local-part is gibberish
-    "GIBBERISH_BOTH",        # Both local and domain are gibberish
-    "CONSONANT_ONLY",        # Domain is all consonants (no vowels)
-    "NO_TLD",                # Domain has no .com, .org, etc.
-    "MULTIPLE_DASHES",       # Multiple consecutive dashes
-    "DASH_PATTERN",          # Suspicious dash pattern
-    "RANDOM_SUBDOMAIN",      # Random subdomain like mail-we4-cj4
-    "SPOOFED",               # Spoofing your email address
-]
-
-# Reasons that go to TRASH (safe delete)
-# These are more likely to have false positives
-TRASH_DELETE_REASONS = [
-    "BLACKLIST_NAME",        # Sender name contains spam word
-    "FAKE_BRAND",            # Pretending to be Amazon, PayPal, etc.
-    "SUBJECT_KEYWORD",       # Subject contains spam keyword
+    "GIBBERISH_DOMAIN",
+    "GIBBERISH_LOCAL",
+    "GIBBERISH_BOTH",
+    "CONSONANT_ONLY",
+    "NO_TLD",
+    "MULTIPLE_DASHES",
+    "DASH_PATTERN",
+    "RANDOM_SUBDOMAIN",
+    "SPOOFED",
+    "SUSPICIOUS_REPLY_TO",  # Added for in2.getdrip.com and similar
 ]
 
 # ============================================================
 
-# LOG_FILE = Path.home() / "spam_killer_graph.log" # Disabled - use cron log instead
+# LOG_FILE = Path.home() / "spam_killer_graph.log"   # DISABLED - using cron log
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        # logging.FileHandler(LOG_FILE), # Disabled - use cron log instead
+        # logging.FileHandler(LOG_FILE),  # DISABLED - using cron log
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -322,12 +317,15 @@ def is_spam(email_address, from_name="", subject=""):
     if domain.lower().endswith("hotmail.com") or domain.lower().endswith("outlook.com"):
         return False, ""
 
-    # RULE 1: Your email spoofed in sender
-    if "email" in email_address.lower():
-        return True, "SPOOFED"
+    # RULE 1: Your email spoofed in sender (uses EMAIL_USERNAME variable)
+    if EMAIL_USERNAME.lower() in email_address.lower():
+        # But not if it's from hotmail.com itself
+        if not domain.lower().endswith("hotmail.com") and not domain.lower().endswith("outlook.com"):
+            logger.info(f"SPOOF DETECTED: {email_address} (contains {EMAIL_USERNAME})")
+            return True, "SPOOFED"
 
     # RULE 2: FAKE BRAND DETECTION
-    fake_brands = ['amazon', 'paypal', 'apple', 'microsoft', 'google', 'netflix', 'spotify', 'ebay']
+    fake_brands = ['amazon', 'paypal', 'apple', 'microsoft', 'google', 'netflix', 'spotify', 'ebay', 'microsoft']
     if from_name:
         from_name_lower = from_name.lower()
         for brand in fake_brands:
@@ -335,11 +333,11 @@ def is_spam(email_address, from_name="", subject=""):
                 if brand not in domain.lower():
                     return True, f"FAKE_BRAND:{brand}"
 
-    # RULE 3: NO TLD IN DOMAIN
+    # RULE 3: NO TLD IN DOMAIN (catches PLECO3Q3I5N1FMWD31TC0A3EC8S4)
     if '.' not in domain:
-        if len(domain) > 8:
+        if len(domain) > 6:
             vowels = sum(1 for c in domain.lower() if c in 'aeiou')
-            if vowels < 4:
+            if vowels < 3:
                 return True, "NO_TLD"
     
     # RULE 4: DOMAIN WITH DASHES AND RANDOM PATTERNS
@@ -347,6 +345,7 @@ def is_spam(email_address, from_name="", subject=""):
     clean_domain = re.sub(r'\.(com|org|net|xyz|info|biz|club|online|site|tech|io|co|uk|us|ca|au|de|fr|eu|it|es|br|com\.br|org\.br|net\.br|gov\.br|edu\.br|tv)$', '', clean_domain)
     clean_domain = re.sub(r'^(mail|email|smtp|imap|pop|www|web|api|app|news|info|secure|login|auth|service|support|help|admin|manager|portal|no-reply|noreply)\.', '', clean_domain)
     
+    # RULE 4a: Multiple dashes in domain
     if '-' in domain:
         if re.search(r'-{2,}', domain):
             return True, "MULTIPLE_DASHES"
@@ -358,13 +357,23 @@ def is_spam(email_address, from_name="", subject=""):
                     if vowels < 2 and re.search(r'[A-Z0-9]', part):
                         return True, "DASH_PATTERN"
     
+    # RULE 4b: Suspicious subdomain pattern (catches mail-3ux-lkd and mail-n1h-9fw)
     domain_parts = domain.split('.')
     if len(domain_parts) >= 3:
         first_part = domain_parts[0]
-        if re.search(r'-', first_part) and len(first_part) > 8:
-            if re.search(r'[a-z]+\d+[a-z]+\d+', first_part):
+        # Check for pattern like mail-3ux-lkd (letter-number-letter)
+        if re.search(r'-', first_part):
+            # Check if it has number-letter-number pattern
+            if re.search(r'[a-z]+\d+[a-z]+\d+', first_part) or re.search(r'[a-z]+\d+[a-z]+', first_part):
                 return True, "RANDOM_SUBDOMAIN"
+            # Check if it has random short segments with numbers
+            segments = first_part.split('-')
+            if len(segments) >= 3:
+                for seg in segments:
+                    if len(seg) >= 2 and re.search(r'\d', seg) and re.search(r'[a-z]', seg):
+                        return True, "RANDOM_SUBDOMAIN"
     
+    # RULE 4c: Domain with random gibberish
     if len(clean_domain) > 8:
         vowels = sum(1 for c in clean_domain.lower() if c in 'aeiou')
         uppercase = sum(1 for c in clean_domain if c.isupper())
@@ -402,7 +411,7 @@ def is_spam(email_address, from_name="", subject=""):
         if local_vowels < 2 and domain_vowels < 3:
             return True, "GIBBERISH_BOTH"
 
-    # RULE 7: Consonant-only domain
+    # RULE 7: Consonant-only domain (catches ufseywokabbrmg)
     if len(domain) > 6:
         vowels = sum(1 for c in domain.lower() if c in 'aeiou')
         if vowels <= 2 and len(domain) > 6:
@@ -410,7 +419,7 @@ def is_spam(email_address, from_name="", subject=""):
             if not any(word in domain.lower() for word in common_words):
                 return True, "CONSONANT_ONLY"
 
-    # RULE 0: BLACKLISTED SENDER NAME (check last because it's the least specific)
+    # RULE 8: BLACKLISTED SENDER NAME (check last because it's the least specific)
     if from_name:
         from_name_lower = from_name.lower()
         for bad_word in BLACKLISTED_SENDER_NAMES:
@@ -425,6 +434,7 @@ def clean_junk_folder():
     logger.info("="*50)
     logger.info("Starting Outlook Spam Killer (Graph API)")
     logger.info(f"Checking email: {EMAIL}")
+    logger.info(f"Username for spoof detection: {EMAIL_USERNAME}")
     logger.info(f"Permanent delete reasons: {PERMANENT_DELETE_REASONS}")
     
     token = get_oauth2_token()
@@ -510,16 +520,48 @@ def clean_junk_folder():
                 if reply_to and len(reply_to) > 0:
                     reply_to_email = reply_to[0].get('emailAddress', {}).get('address', '')
                 
-                if sender_email_addr and sender_email_addr != sender_email:
-                    if is_spam(sender_email_addr, "", subject):
-                        pass
+                # NEW RULE: Check if Reply-To is suspicious
+                # Common spam services: in2.getdrip.com, etc.
+                suspicious_reply_to_domains = [
+                    'getdrip.com',
+                    'mailgun.org',
+                    'sendgrid.net',
+                    'mailchimp.com',
+                    'constantcontact.com',
+                    'hubspot.com',
+                    'activecampaign.com',
+                    'convertkit.com',
+                    'klaviyo.com',
+                    'brevo.com',
+                    'sendinblue.com',
+                ]
                 
-                if reply_to_email and sender_email:
+                if reply_to_email:
                     reply_domain = reply_to_email.split('@')[-1] if '@' in reply_to_email else ''
-                    sender_domain = sender_email.split('@')[-1] if '@' in sender_email else ''
-                    if reply_domain and sender_domain and reply_domain != sender_domain:
-                        if '-' in reply_domain or re.search(r'[A-Z0-9]{8,}', reply_domain, re.IGNORECASE):
-                            logger.info(f"REPLY-TO SPOOF: From={sender_domain}, Reply-To={reply_domain}")
+                    # Check if reply_to domain differs from from domain
+                    if sender_email:
+                        sender_domain = sender_email.split('@')[-1] if '@' in sender_email else ''
+                        if reply_domain and sender_domain and reply_domain != sender_domain:
+                            # If reply-to is a known email marketing service AND it doesn't match the from domain
+                            is_suspicious = False
+                            for suspicious in suspicious_reply_to_domains:
+                                if suspicious in reply_domain.lower():
+                                    is_suspicious = True
+                                    break
+                            # Also check if the from domain looks suspicious
+                            if is_suspicious or '-' in reply_domain or re.search(r'[A-Z0-9]{8,}', reply_domain, re.IGNORECASE):
+                                logger.info(f"SUSPICIOUS REPLY-TO: From={sender_domain}, Reply-To={reply_domain}")
+                                # Mark the email as spam with this reason
+                                # We'll use a special flag to delete it
+                                if sender_email:
+                                    is_spam_email, spam_reason = is_spam(sender_email, sender_name, subject)
+                                    if not is_spam_email:
+                                        # If it wasn't caught by other rules, catch it here
+                                        spam_reason = "SUSPICIOUS_REPLY_TO"
+                                        is_spam_email = True
+                                else:
+                                    is_spam_email = True
+                                    spam_reason = "SUSPICIOUS_REPLY_TO"
                 
                 # Check if spam and get the reason
                 is_spam_email = False
@@ -539,7 +581,6 @@ def clean_junk_folder():
                     # SELECTIVE DELETION LOGIC
                     # ============================================================
                     
-                    # Check if this reason should be permanently deleted
                     should_permanent_delete = False
                     for reason_pattern in PERMANENT_DELETE_REASONS:
                         if reason_pattern in spam_reason:
@@ -547,7 +588,6 @@ def clean_junk_folder():
                             break
                     
                     if should_permanent_delete:
-                        # PERMANENT DELETE - bypass trash
                         response = graph_request(
                             token, 'DELETE',
                             f'https://graph.microsoft.com/v1.0/me/messages/{msg_id}'
@@ -559,7 +599,6 @@ def clean_junk_folder():
                         else:
                             logger.warning(f"  ✗ Failed to delete: {response.status_code}")
                     else:
-                        # MOVE TO TRASH (safe delete)
                         response = graph_request(
                             token, 'POST',
                             f'https://graph.microsoft.com/v1.0/me/messages/{msg_id}/move',
@@ -571,7 +610,6 @@ def clean_junk_folder():
                             trash_count += 1
                             logger.info(f"  ✓ Moved to Trash (reason: {spam_reason})")
                         else:
-                            # Fallback: try permanent delete if move fails
                             response = graph_request(
                                 token, 'DELETE',
                                 f'https://graph.microsoft.com/v1.0/me/messages/{msg_id}'
