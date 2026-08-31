@@ -130,7 +130,7 @@ This is the default script behavior. You can customize this, see "Configuration"
 | `SUBJECT_KEYWORD:xxx` | ⚠️ **Move to Trash** | Could be a legitimate email with "free" |
 
 ## Housekeeping
-You might want to clean the log file from time to time. Here is a suggestion for setting up `logrotate`.
+You might want to clean the log file from time to time. Here is a suggestion for setting up `logrotate`, assuming the script is running in `home/pi`.
 - Create an entry in logrotate:
 ```
 sudo nano /etc/logrotate.d/spam_killer
@@ -152,4 +152,4 @@ This is what it does:
 -   **`copytruncate`**: Copies the active log, then truncates (empties) the original in place so your active script never loses access to the file.
 -   **`compress`**: Compresses the older logs using gzip to save disk space.
 -   **`missingok`**: Prevents error messages if the log file is temporarily missing.
--   **`notifempty`**: Skips the rotation if the log file is completely empty.
+-   **`notifempty`**: Skips the rotation if the log file is completely empty.  
