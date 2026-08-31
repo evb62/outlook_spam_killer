@@ -68,7 +68,7 @@ The script will then process your Junk folder.
 | :--- | :--- |
 | Run manually | `python3 ~/outlook_spam_killer_graph.py` |
 | Force re-authentication | `python3 ~/outlook_spam_killer_graph.py --first-time` |
-| Watch live log | `tail -f ~/spam_killer_graph.log` |
+| Watch live log | `tail -f ~/spam_killer.log` |
 | Edit script | `nano ~/outlook_spam_killer_graph.py` |
 | Edit cron | `crontab -e` |
 | View current cron | `crontab -l` |
@@ -78,14 +78,14 @@ The script will then process your Junk folder.
 | :--- | :--- |
 | `~/outlook_spam_killer_graph.py` | Main script |
 | `~/.outlook_spam_graph_token.json` | Authentication token (auto-refreshed) |
-| `~/spam_killer_graph.log` | Script activity log |
+| `~/spam_killer.log` | Script activity log |
 
 ### Troubleshooting
 
 | Problem | Solution |
 | :--- | :--- |
 | Script not running | Check if it's executable: `chmod +x ~/outlook_spam_killer_graph.py` |
-| Cron not running | Check log: `cat ~/spam_killer_graph.log` |
+| Cron not running | Check log: `cat ~/spam_killer.log` |
 | Authentication failed | Run with `--first-time` flag to re-authenticate |
 | "Module not found" |  Install requests: `pip3 install --break-system-packages requests` |
 | Token expired | Script auto-refreshes, or run with `--first-time` |
@@ -100,7 +100,7 @@ If prompted, select **nano** as your editor.
 Add this line to run the script every 15 minutes:
 ```
 # Outlook Spam Killer - runs every 15 minutes
-*/15 * * * * /usr/bin/python3 /home/pi/outlook_spam_killer_graph.py
+*/15 * * * * /usr/bin/python3 /home/pi/outlook_spam_killer_graph.py >> /home/pi/spam_killer.log 2>&1
 ```
 Edit time interval and log output as you wish. In the example above, it runs every 15 minutes and writes the output to `home/pi`.
 Save and exit: `Ctrl+O`, `Enter`, `Ctrl+X`
@@ -137,7 +137,7 @@ sudo nano /etc/logrotate.d/spam_killer
 ```
 - Insert the following text:
 ```
- /home/pi/spam_killer_graph.log {
+ /home/pi/spam_killer.log {
     weekly
     rotate 4
     copytruncate
