@@ -37,7 +37,6 @@ The Cliend ID, or **GUID (Globally Unique Identifier)**, is a 128-bit number, wr
 | `# BLACKLISTED SENDER NAME PATTERNS`| A default list is provided. Add or delete keywords at will. Use quotes, end with a comma. |
 | `# SPAM KEYWORDS in subject line`| A default list is provided. Add or delete keywords at will. Use quotes, end with a comma. |
 | `# SELECTIVE DELETION CONFIGURATION`| A list of reasons for deletion. Move those between a *permanent delete* (not recoverable) and *send to trash* (temporarily recoverable from the trash folder). |
-| `# RULE 1: Your email spoofed in sender`| In the line below, replace `"email"` with the first part of your actual email. For instance, if your email address is `"johndoe@company.com"`, replace `"email"` with `"johndoe"`.
   
 ## Usage
 
@@ -125,6 +124,7 @@ This is the default script behavior. You can customize this, see "Configuration"
 | `DASH_PATTERN` | ✅ **Permanent Delete** | Suspicious dash pattern |
 | `RANDOM_SUBDOMAIN` | ✅ **Permanent Delete** | Random subdomain |
 | `SPOOFED` | ✅ **Permanent Delete** | Spoofing your email |
+| `SUSPICIOUS_REPLY_TO` | ✅ **Permanent Delete** | Checks common marketing services |
 | `BLACKLIST_NAME:xxx` | ⚠️ **Move to Trash** | Could be a false positive |
 | `FAKE_BRAND:xxx` | ⚠️ **Move to Trash** | Could be a mistaken brand |
 | `SUBJECT_KEYWORD:xxx` | ⚠️ **Move to Trash** | Could be a legitimate email with "free" |
