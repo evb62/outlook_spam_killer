@@ -128,12 +128,12 @@ TRASH_DELETE_REASONS = [
 
 # ============================================================
 
-LOG_FILE = Path.home() / "spam_killer_graph.log"
+# LOG_FILE = Path.home() / "spam_killer_graph.log" # Disabled - use cron log instead
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(LOG_FILE),
+        # logging.FileHandler(LOG_FILE), # Disabled - use cron log instead
         logging.StreamHandler(sys.stdout)
     ]
 )
