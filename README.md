@@ -36,6 +36,7 @@ The Cliend ID, or **GUID (Globally Unique Identifier)**, is a 128-bit number, wr
 | `# WHITELIST - Legitimate senders` | In the list below replace `"legitimatexx@domain.com"` with your legitimate sender list. Use quotes, and end with a comma. |
 | `# BLACKLISTED SENDER NAME PATTERNS`| A default list is provided. Add or delete keywords at will. Use quotes, end with a comma. |
 | `# SPAM KEYWORDS in subject line`| A default list is provided. Add or delete keywords at will. Use quotes, end with a comma. |
+| `# BLACKLISTED DOMAINS`| Domains that are marked for deletion. Add or delete domains at will. Use quotes, end with a comma. |
 | `# SELECTIVE DELETION CONFIGURATION`| A list of reasons for deletion. Move those between a *permanent delete* (not recoverable) and *send to trash* (temporarily recoverable from the trash folder). |
 
 Optional: change `logging.INFO` to `logging.DEBUG` for more information.
