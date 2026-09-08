@@ -37,7 +37,7 @@ The Cliend ID, or **GUID (Globally Unique Identifier)**, is a 128-bit number, wr
 | `# BLACKLISTED SENDER NAME PATTERNS`| A default list is provided. Add or delete keywords at will. Use quotes, end with a comma. |
 | `# SPAM KEYWORDS in subject line`| A default list is provided. Add or delete keywords at will. Use quotes, end with a comma. |
 | `# BLACKLISTED DOMAINS`| Domains that are marked for deletion. Add or delete domains at will. Use quotes, end with a comma. |
-| `# SELECTIVE DELETION CONFIGURATION`| A list of reasons for deletion. Move those between a *permanent delete* (not recoverable) and *send to trash* (temporarily recoverable from the trash folder). |
+| `# SELECTIVE DELETION CONFIGURATION`| A list of reasons for deletion. Move those between a *permanent delete* (not recoverable) and *send to trash* (temporarily recoverable from the trash folder). Delete reasons that are **not** included here will be sent to trash (*recoverable*). Look around the script for criteria that you would like to delete permanently, like `BLACKLISTED_SENDER_NAMES` or `SPAM_KEYWORDS`, for instance. |
 
 Optional: change `logging.INFO` to `logging.DEBUG` for more information.
   
