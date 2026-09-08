@@ -31,6 +31,16 @@ WHITELIST = [
     "legitimate02@domain.com",
 ]
 
+# BLACKLISTED DOMAINS - Emails from these domains will be deleted
+# Add full domains (e.g., "satirizuma.com") or domain patterns
+BLACKLISTED_DOMAINS = [
+    "satirizuma.com",
+    "mopses.com",
+    # Add more as you discover them:
+    # "example-spam-domain.com",
+    # "another-spam-domain.net",
+]
+
 # BLACKLISTED SENDER NAME PATTERNS
 BLACKLISTED_SENDER_NAMES = [
     "affiliate", "associate", "timeshare", "promo", "promotion",
@@ -73,6 +83,7 @@ PERMANENT_DELETE_REASONS = [
     "RANDOM_SUBDOMAIN",
     "SPOOFED",
     "SUSPICIOUS_REPLY_TO",
+    "BLACKLISTED_DOMAIN",
 ]
 
 logging.basicConfig(
@@ -247,7 +258,15 @@ def is_spam(email_address, from_name="", subject=""):
         for w in WHITELIST:
             if '@' in w and w.split('@')[1].lower() == domain.lower():
                 return False, ""
-    
+
+        # ============================================================
+        # NEW: BLACKLISTED DOMAIN CHECK
+        # ============================================================
+        for bad_domain in BLACKLISTED_DOMAINS:
+            if bad_domain.lower() in domain.lower():
+                return True, f"BLACKLISTED_DOMAIN:{bad_domain}"
+        # ============================================================
+
     # SUBJECT KEYWORD CHECK
     if subject:
         subject_lower = subject.lower()
