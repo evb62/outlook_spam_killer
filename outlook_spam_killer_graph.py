@@ -41,6 +41,14 @@ BLACKLISTED_DOMAINS = [
     # "another-spam-domain.net",
 ]
 
+# SUSPICIOUS TLDs - domains ending with these are automatically flagged
+SUSPICIOUS_TLDS = [
+    ".sbs", ".pics", ".xyz", ".club", ".icu",
+    ".buzz", ".cyou", ".rest", ".monster", ".quest",
+    ".cfd", ".sale", ".work", ".live", ".life",
+    ".click", ".link", ".download", ".stream",
+]
+
 # BLACKLISTED SENDER NAME PATTERNS
 BLACKLISTED_SENDER_NAMES = [
     "affiliate", "associate", "timeshare", "promo", "promotion",
@@ -84,6 +92,10 @@ PERMANENT_DELETE_REASONS = [
     "SPOOFED",
     "SUSPICIOUS_REPLY_TO",
     "BLACKLISTED_DOMAIN",
+    "SPOOFED_LOCAL",
+    "SUSPICIOUS_TLD",
+    "SPOOFED_REPLY_TO",
+    "SELF_SPOOFED",
 ]
 
 logging.basicConfig(
@@ -259,6 +271,16 @@ def is_spam(email_address, from_name="", subject=""):
             if '@' in w and w.split('@')[1].lower() == domain.lower():
                 return False, ""
 
+    
+    # ============================================================
+    # RULE 0: Email in Junk with From == my own address = SPOOFED
+    # Microsoft itself flagged it as spam (it's in Junk),
+    # and legitimate self-sent emails don't land in Junk.
+    # ============================================================
+    if email_address.lower() == EMAIL.lower():
+        return True, "SELF_SPOOFED"
+        
+        
         # ============================================================
         # NEW: BLACKLISTED DOMAIN CHECK
         # ============================================================
@@ -283,10 +305,15 @@ def is_spam(email_address, from_name="", subject=""):
     if domain.lower().endswith("hotmail.com") or domain.lower().endswith("outlook.com"):
         return False, ""
 
-    # RULE 1: Spoofed
+    # RULE 1: Spoofed — your username anywhere in the address from a non-Microsoft domain
     if EMAIL_USERNAME.lower() in email_address.lower():
-        if not domain.lower().endswith("hotmail.com") and not domain.lower().endswith("outlook.com"):
+        if not (domain.lower().endswith("hotmail.com") or domain.lower().endswith("outlook.com")):
             return True, "SPOOFED"
+
+    # RULE 1b: Your username appears as a "From" or Reply-To local-part
+    # Example: <--user@hotmail.com> or reply-xyzuser@hotmail.com
+    if EMAIL_USERNAME.lower() in local.lower():
+        return True, "SPOOFED_LOCAL"
 
     # RULE 2: FAKE BRAND
     fake_brands = ['amazon', 'paypal', 'apple', 'microsoft', 'google', 'netflix', 'spotify', 'ebay']
@@ -386,6 +413,11 @@ def is_spam(email_address, from_name="", subject=""):
             if bad_word.lower() in from_name_lower:
                 return True, f"BLACKLIST_NAME:{bad_word}"
 
+    # RULE 11: SUSPICIOUS TLD
+    for tld in SUSPICIOUS_TLDS:
+        if domain.lower().endswith(tld):
+            return True, f"SUSPICIOUS_TLD:{tld}"
+
     return False, ""
 
 # --- MAIN CLEANUP FUNCTION ---
@@ -478,25 +510,55 @@ def clean_junk_folder():
             processed_count += 1
             
             try:
-                from_data = msg.get('from', {})
-                email_address = from_data.get('emailAddress', {})
-                sender_email = email_address.get('address', '')
-                sender_name = email_address.get('name', '')
-                
-                sender_data = msg.get('sender', {})
-                sender_email_addr = sender_data.get('emailAddress', {}).get('address', '')
-                
-                subject = msg.get('subject', 'No Subject')
+                if not msg.get('id'):
+                    logger.warning(f"Skipping message with no ID: {msg}")
+                    continue
+
+                # ============================================================
+                # Extract message fields with None-safety
+                # ============================================================
+                from_data = msg.get('from') or {}
+                email_address = from_data.get('emailAddress') or {}
+                sender_email = email_address.get('address') or ''
+                sender_name = email_address.get('name') or ''
+
+                sender_data = msg.get('sender') or {}
+                sender_email_addr = (sender_data.get('emailAddress') or {}).get('address') or ''
+
+                subject = msg.get('subject') or 'No Subject'
                 msg_id = msg.get('id')
-                
-                reply_to = msg.get('replyTo', [])
+
+                reply_to = msg.get('replyTo') or []
                 reply_to_email = ""
                 if reply_to and len(reply_to) > 0:
-                    reply_to_email = reply_to[0].get('emailAddress', {}).get('address', '')
-                
-                # DEBUG: Log what we're seeing
-                logger.debug(f"Processing: From={sender_email}, Reply-To={reply_to_email}, Subject={subject[:40]}")
-                
+                    rt_address = (reply_to[0].get('emailAddress') or {}).get('address') or ''
+                    reply_to_email = rt_address
+
+                # ============================================================
+                # FALLBACK: if subject or replyTo is missing, fetch full message
+                # (Graph sometimes omits fields for malformed spam)
+                # ============================================================
+                if subject == 'No Subject' or not reply_to_email:
+                    full_resp = graph_request(
+                        token, 'GET',
+                        f'https://graph.microsoft.com/v1.0/me/messages/{msg_id}',
+                        params={'$select': 'id,subject,from,replyTo,sender'}
+                    )
+                    if full_resp.status_code == 200:
+                        full_msg = full_resp.json()
+                        if full_msg.get('subject'):
+                            subject = full_msg['subject']
+                        if full_msg.get('replyTo') and len(full_msg['replyTo']) > 0:
+                            reply_to_email = (full_msg['replyTo'][0].get('emailAddress') or {}).get('address') or ''
+                        if full_msg.get('from'):
+                            fd = full_msg['from']
+                            ea = fd.get('emailAddress') or {}
+                            sender_email = ea.get('address') or sender_email
+                            sender_name = ea.get('name') or sender_name
+                        logger.debug(f"Fetched full message: From={sender_email}, Reply-To={reply_to_email}, Subject={str(subject)[:40]}")
+
+                logger.debug(f"Processing: From={sender_email}, Reply-To={reply_to_email}, Subject={str(subject)[:40]}")
+
                 # Check for suspicious Reply-To
                 is_spam_email = False
                 spam_reason = ""
@@ -507,6 +569,14 @@ def clean_junk_folder():
                 
                 # If not spam yet, check Reply-To
                 if not is_spam_email and reply_to_email:
+                  # NEW: your username in Reply-To local part = spam
+                    if '@' in reply_to_email:
+                        reply_local = reply_to_email.rsplit('@', 1)[0]
+                        if EMAIL_USERNAME.lower() in reply_local.lower():
+                            logger.info(f"REPLY-TO contains username: {reply_to_email}")
+                            is_spam_email = True
+                            spam_reason = "SPOOFED_REPLY_TO"
+                            
                     reply_domain = reply_to_email.split('@')[-1] if '@' in reply_to_email else ''
                     if sender_email:
                         sender_domain = sender_email.split('@')[-1] if '@' in sender_email else ''
@@ -517,7 +587,7 @@ def clean_junk_folder():
                             if suspicious in reply_domain.lower():
                                 is_suspicious = True
                                 break
-                        
+
                         # Also check if reply-to domain looks random or different
                         if reply_domain and sender_domain and reply_domain != sender_domain:
                             if is_suspicious or '-' in reply_domain or re.search(r'[A-Z0-9]{8,}', reply_domain, re.IGNORECASE):
